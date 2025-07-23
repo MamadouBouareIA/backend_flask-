@@ -1,5 +1,6 @@
-fastapi==0.116.1
-uvicorn==0.35.0
+fastapi==0.111.0         # version stable récente (la 0.116.1 n'existe pas)
+uvicorn==0.35.0          # OK si ça fonctionne chez toi, sinon on peut l'actualiser
+gunicorn==21.2.0         # ➕ Ajouté pour Render
 tensorflow==2.15.0
 numpy==1.26.4
 pillow==10.3.0
