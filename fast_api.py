@@ -27,7 +27,7 @@ def preprocess_image(file):
     return np.expand_dims(image, axis=0)  # (1, 224, 224, 3)
 
 #  Endpoint principal
-@app.route('/compare', methods=['POST'])
+@app.route('/predict', methods=['POST'])
 def compare_images():
     if 'image_T0' not in request.files or 'image_T1' not in request.files:
         return jsonify({'error': "Les deux fichiers 'image_T0' et 'image_T1' sont requis."}), 400
