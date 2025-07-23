@@ -1,75 +1,70 @@
-# coding utf-8
-import uvicorn
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from flask import Flask, request, jsonify
 import numpy as np
 import tensorflow as tf
 from PIL import Image
 import io
 
-# Initialisation FastAPI
-app = FastAPI(
-    title="API Prédiction Véhicule",
-    description="API pour la classification d'images de véhicules avec MobileNetV2",
-    version="1.0.0"
-)
-
-# Autoriser les requêtes CORS (Flutter, web, etc.)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # À restreindre en production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Charger le modèle et les labels au démarrage
-MODEL_PATH = "model_voiture_professionnel.keras"
-LABELS_PATH = "labels.txt"
-IMG_SIZE = (224, 224)
+app = Flask(__name__)
 
 try:
-    model = tf.keras.models.load_model(MODEL_PATH)
+    model = tf.keras.models.load_model('damage_comparison_model.h5')
 except Exception as e:
-    raise RuntimeError(f"Erreur lors du chargement du modèle : {e}")
+    print(f"Erreur lors du chargement du modèle : {e}")
+    # Gérer l'erreur, par exemple en arrêtant l'application
 
-try:
-    with open(LABELS_PATH, "r") as f:
-        class_names = [line.strip() for line in f.readlines()]
-except Exception as e:
-    raise RuntimeError(f"Erreur lors du chargement des labels : {e}")
+# Vues autorisées
+ALLOWED_VIEWS = ['front', 'back', 'left', 'right']
 
-@app.post("/predict", summary="Prédire la classe d'une image")
-async def predict(file: UploadFile = File(...)):
-    # Vérification du type de fichier
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Le fichier doit être une image.")
+#  Vérifie si le nom de l’image contient une vue autorisée
+def is_valid_view(filename):
+    return any(view in filename.lower() for view in ALLOWED_VIEWS)
 
-    try:
-        contents = await file.read()
-        img = Image.open(io.BytesIO(contents)).convert("RGB")
-        img = img.resize(IMG_SIZE)
-        img_array = np.array(img)
-        img_array = np.expand_dims(img_array, axis=0)
-        img_array = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
+#  Prétraitement d'image
+def preprocess_image(file):
+    image = Image.open(file).convert('RGB')
+    image = image.resize((224, 224))
+    image = np.array(image, dtype=np.float32) / 255.0
+    return np.expand_dims(image, axis=0)  # (1, 224, 224, 3)
 
-        preds = model.predict(img_array)
-        idx = int(np.argmax(preds[0]))
-        confidence = float(preds[0][idx])
-        label = class_names[idx]
+#  Endpoint principal
+@app.route('/compare', methods=['POST'])
+def compare_images():
+    if 'image_T0' not in request.files or 'image_T1' not in request.files:
+        return jsonify({'error': "Les deux fichiers 'image_T0' et 'image_T1' sont requis."}), 400
 
-        return JSONResponse({
-            "label": label,
-            "confidence": confidence,
-            "class_index": idx
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de la prédiction : {e}")
+    file_T0 = request.files['image_T0']
+    file_T1 = request.files['image_T1']
 
-@app.get("/", summary="Test API")
-def root():
-    return {"message": "API de prédiction de véhicules opérationnelle."}
+    #Vérification du type de vue
+    if not is_valid_view(file_T0.filename) or not is_valid_view(file_T1.filename):
+        return jsonify({
+            'error': "Les fichiers doivent correspondre à des vues autorisées : front, back, left, right."
+        }), 403
 
-if __name__ == "__main__":
-    uvicorn.run("fast_api:app", host="0.0.0.0", port=8000, reload=True)
+    #  Prétraitement
+    image_T0 = preprocess_image(file_T0)
+    image_T1 = preprocess_image(file_T1)
+
+    #  Prédiction
+    prediction = model.predict([image_T0, image_T1])
+    print("Prediction:", prediction)
+
+    # Gérer les différentes formes de prédiction
+    if isinstance(prediction, dict):
+        prob = list(prediction.values())[0][0][0] if isinstance(list(prediction.values())[0], np.ndarray) else list(prediction.values())[0]
+    elif isinstance(prediction, np.ndarray):
+        prob = prediction[0][0] if len(prediction.shape) > 1 else prediction[0]
+    else:
+        return jsonify({'error': "Format de prédiction inconnu"}), 500
+
+    anomaly = prob > 0.5
+
+    return jsonify({
+        'anomaly_detected': bool(anomaly),
+        'damage_probability': round(float(prob), 4),
+        'view_T0': file_T0.filename,
+        'view_T1': file_T1.filename
+    })
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
