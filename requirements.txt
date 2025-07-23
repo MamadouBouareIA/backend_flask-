@@ -1,9 +1,9 @@
-fastapi>=0.95,<1.0
-uvicorn>=0.22,<1.0
-gunicorn>=20.0,<22.0
-tensorflow>=2.16.0,<2.17.0
-numpy>=1.26,<1.27
-pillow>=10.3,<11.0
-python-multipart>=0.0.6,<1.0
-flask>=2.3,<3.0
+fastapi>=0.95
+uvicorn>=0.22
+gunicorn>=20.0
+tensorflow>=2.16.0
+numpy>=1.26
+pillow>=10.3
+python-multipart>=0.0.6
+flask>=2.3
 
